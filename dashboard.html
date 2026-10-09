@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>PDF Dashboard | Avinash Pattewar Sir</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f2f5fa;color:#172b49;font-family:Arial,sans-serif}
+header{background:#102747;color:white;padding:20px}
+header .inner,main{width:min(1000px,92%);margin:auto}
+header .inner{display:flex;justify-content:space-between;align-items:center;gap:15px}
+header h1{font-size:21px;margin:0}
+header p{color:#d5dfed;margin:5px 0 0;font-size:13px}
+button,.button{border:0;border-radius:8px;padding:12px 16px;background:#f2a12b;color:#172b49;font-weight:bold;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+main{padding:28px 0 60px}
+.card{background:white;border:1px solid #e0e6ef;border-radius:14px;padding:24px;margin-bottom:22px;box-shadow:0 8px 25px #142b4910}
+h2{margin:0 0 8px;font-size:22px}
+.muted{color:#64748b;line-height:1.5}
+label{display:block;font-weight:bold;margin:18px 0 7px}
+input,select,textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:8px;background:white;font:inherit}
+textarea{min-height:85px;resize:vertical}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+.secondary{background:#e8eef6}
+#status{margin-top:16px;white-space:pre-wrap;overflow-wrap:anywhere}
+.material{border-top:1px solid #e3e8f0;padding:16px 0}
+.material:first-child{border-top:0}
+.material h3{margin:0 0 6px}
+.material .meta{font-size:13px;color:#64748b}
+.hidden{display:none!important}
+footer{text-align:center;color:#64748b;font-size:12px;padding:20px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}.card{padding:18px}header .inner{align-items:flex-start}}
+</style>
+</head>
+<body>
+<header>
+  <div class="inner">
+    <div>
+      <h1>Avinash Pattewar Sir</h1>
+      <p>MPSC & UPSC Study Material Dashboard</p>
+    </div>
+    <button id="logout" class="secondary">Log out</button>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Upload a question paper</h2>
+    <p class="muted">Add a PDF, organize it by examination, and choose whether to publish it.</p>
+
+    <form id="uploadForm">
+      <label for="title">Paper title *</label>
+      <input id="title" maxlength="160" required placeholder="e.g. MPSC Rajyaseva Practice Paper">
+
+      <div class="grid">
+        <div>
+          <label for="category">Category *</label>
+          <select id="category" required>
+            <option value="MPSC Rajyaseva">MPSC Rajyaseva</option>
+            <option value="MPSC Group B">MPSC Group B</option>
+            <option value="MPSC Group C">MPSC Group C</option>
+            <option value="UPSC">UPSC</option>
+            <option value="Current Affairs">Current Affairs</option>
+            <option value="Practice Papers">Practice Papers</option>
+          </select>
+        </div>
+        <div>
+          <label for="pdf">Question paper PDF *</label>
+          <input id="pdf" type="file" accept="application/pdf,.pdf" required>
+          <p class="muted">Maximum file size: 50 MB.</p>
+        </div>
+      </div>
+
+      <label for="description">Description</label>
+      <textarea id="description" maxlength="1000" placeholder="What will students learn from this paper?"></textarea>
+
+      <label for="branding">Marketing footer text</label>
+      <input id="branding" maxlength="180" value="Avinash Pattewar Sir | MPSC & UPSC Guidance">
+
+      <label>
+        <input id="publish" type="checkbox" style="width:auto;margin-right:8px">
+        Publish after upload
+      </label>
+
+      <div class="actions">
+        <button id="uploadButton" type="submit">Upload PDF</button>
+        <button id="refreshButton" type="button" class="secondary">Refresh materials</button>
+      </div>
+      <div id="status" role="status" aria-live="polite"></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Study materials</h2>
+    <p class="muted">Manage materials already recorded in the database.</p>
+    <div id="materials"><p class="muted">Loading…</p></div>
+  </section>
+</main>
+
+<footer>Private administrator area · Avinash Pattewar Sir</footer>
+
+<script type="module">
+import { createClient } from
+  "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = "https://dcwsyhywjyujwcbptxab.supabase.co";
+const SUPABASE_KEY =
+  "sb_publishable_zCz1LrWDghA85X9oQbkDVg_mCzc2033";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const statusBox = document.getElementById("status");
+const uploadButton = document.getElementById("uploadButton");
+const materialsBox = document.getElementById("materials");
+
+let currentUser = null;
+
+function showStatus(message) {
+  statusBox.textContent = message;
+}
+
+function safeText(value) {
+  return String(value ?? "");
+}
+
+async function requireAdmin() {
+  const { data: { session }, error } =
+    await supabase.auth.getSession();
+
+  if (error || !session) {
+    location.replace("./admin.html");
+    return false;
+  }
+
+  const { data: isAdmin, error: adminError } =
+    await supabase.rpc("is_site_admin");
+
+  if (adminError || isAdmin !== true) {
+    await supabase.auth.signOut();
+    location.replace("./admin.html");
+    return false;
+  }
+
+  currentUser = session.user;
+  return true;
+}
+
+async function loadMaterials() {
+  materialsBox.textContent = "Loading materials…";
+
+  const { data, error } = await supabase
+    .from("study_materials")
+    .select("id,title,description,category,published,created_at,storage_path")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    materialsBox.textContent =
+      "Could not load materials. Check the database permissions. " +
+      error.message;
+    return;
+  }
+
+  materialsBox.replaceChildren();
+
+  if (!data?.length) {
+    materialsBox.textContent = "No materials uploaded yet.";
+    return;
+  }
+
+  for (const item of data) {
+    const article = document.createElement("article");
+    article.className = "material";
+
+    const heading = document.createElement("h3");
+    heading.textContent = safeText(item.title);
+
+    const meta = document.createElement("p");
+    meta.className = "meta";
+    meta.textContent =
+      `${safeText(item.category)} · ${item.published ? "Published" : "Draft"}`;
+
+    const description = document.createElement("p");
+    description.className = "muted";
+    description.textContent = safeText(item.description);
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const toggle = document.createElement("button");
+    toggle.className = "secondary";
+    toggle.textContent = item.published ? "Unpublish" : "Publish";
+    toggle.addEventListener("click", () => togglePublish(item));
+
+    const remove = document.createElement("button");
+    remove.className = "secondary";
+    remove.textContent = "Delete";
+    remove.addEventListener("click", () => deleteMaterial(item));
+
+    actions.append(toggle, remove);
+    article.append(heading, meta, description, actions);
+    materialsBox.append(article);
+  }
+}
+
+async function togglePublish(item) {
+  const { error } = await supabase
+    .from("study_materials")
+    .update({ published: !item.published })
+    .eq("id", item.id);
+
+  if (error) {
+    showStatus("Unable to change publication status: " + error.message);
+    return;
+  }
+
+  showStatus("Publication status updated.");
+  await loadMaterials();
+}
+
+async function deleteMaterial(item) {
+  if (!confirm(`Delete "${item.title}" and its PDF? This cannot be undone.`)) {
+    return;
+  }
+
+  const { error: storageError } = await supabase.storage
+    .from("study-materials")
+    .remove([item.storage_path]);
+
+  if (storageError) {
+    showStatus("Unable to remove PDF: " + storageError.message);
+    return;
+  }
+
+  const { error } = await supabase
+    .from("study_materials")
+    .delete()
+    .eq("id", item.id);
+
+  if (error) {
+    showStatus("PDF removed, but database record deletion failed: " + error.message);
+    return;
+  }
+
+  showStatus("Material deleted.");
+  await loadMaterials();
+}
+
+document.getElementById("logout").addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  location.replace("./admin.html");
+});
+
+document.getElementById("refreshButton").addEventListener("click", loadMaterials);
+
+document.getElementById("uploadForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  uploadButton.disabled = true;
+  showStatus("Checking permissions…");
+
+  let uploadedPath = null;
+
+  try {
+    if (!currentUser || !(await requireAdmin())) {
+      throw new Error("Your session has expired. Please sign in again.");
+    }
+
+    const title = document.getElementById("title").value.trim();
+    const category = document.getElementById("category").value;
+    const description = document.getElementById("description").value.trim();
+    const file = document.getElementById("pdf").files[0];
+    const publish = document.getElementById("publish").checked;
+    const branding = document.getElementById("branding").value.trim();
+
+    if (!file || file.type !== "application/pdf" ||
+        !file.name.toLowerCase().endsWith(".pdf")) {
+      throw new Error("Please select a PDF file.");
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      throw new Error("The PDF must be smaller than 50 MB.");
+    }
+
+    // Upload original file. Branding will be applied in a later stage.
+    const path = `${currentUser.id}/${crypto.randomUUID()}.pdf`;
+    const { error: uploadError } = await supabase.storage
+      .from("study-materials")
+      .upload(path, file, {
+        contentType: "application/pdf",
+        upsert: false
+      });
+
+    if (uploadError) throw uploadError;
+    uploadedPath = path;
+
+    const { error: insertError } = await supabase
+      .from("study_materials")
+      .insert({
+        title,
+        description: branding
+          ? `${description}${description ? "\n\n" : ""}${branding}`
+          : description,
+        category,
+        storage_path: path,
+        published: publish
+      });
+
+    if (insertError) throw insertError;
+
+    showStatus("PDF uploaded successfully. " +
+      (publish ? "It has been marked as published." : "It remains a draft.") +
+      " Note: automatic PDF watermarking has not been implemented yet.");
+
+    event.target.reset();
+    document.getElementById("branding").value =
+      "Avinash Pattewar Sir | MPSC & UPSC Guidance";
+    await loadMaterials();
+
+  } catch (error) {
+    if (uploadedPath) {
+      await supabase.storage.from("study-materials").remove([uploadedPath]);
+    }
+    showStatus("Upload failed: " + (error.message || "Unknown error"));
+  } finally {
+    uploadButton.disabled = false;
+  }
+});
+
+if (await requireAdmin()) {
+  await loadMaterials();
+}
+</script>
+</body>
+  </html>
