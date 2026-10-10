@@ -347,7 +347,7 @@ document.getElementById("uploadForm").addEventListener("submit", async event => 
 
 const brandedFile = await addPdfBranding(file, branding);
 
-const path = "${currentUser.id}/${crypto.randomUUID()}.pdf";
+const path = ${currentUser.id}/${crypto.randomUUID()}.pdf;
 
 const { error: uploadError } = await supabase.storage
 .from("study-materials")
