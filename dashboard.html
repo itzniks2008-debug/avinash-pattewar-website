@@ -112,6 +112,66 @@ const SUPABASE_KEY =
   "sb_publishable_zCz1LrWDghA85X9oQbkDVg_mCzc2033";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+async function addPdfBranding(file, brandingText) {
+if (!window.PDFLib) {
+throw new Error("PDF branding library did not load. Refresh and try again.");
+}
+
+const { PDFDocument, rgb, degrees, StandardFonts } = window.PDFLib;
+
+const bytes = await file.arrayBuffer();
+const pdfDoc = await PDFDocument.load(bytes);
+const pages = pdfDoc.getPages();
+
+const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+const watermark = brandingText || "Avinash Pattewar Sir | MPSC & UPSC Guidance";
+
+for (const page of pages) {
+const { width, height } = page.getSize();
+
+// Light diagonal watermark
+page.drawText(watermark, {
+  x: 35,
+  y: height * 0.45,
+  size: Math.min(22, width / 28),
+  font,
+  color: rgb(0.72, 0.76, 0.82),
+  opacity: 0.20,
+  rotate: degrees(35)
+});
+
+// Professional footer
+const footer = "Avinash Pattewar Sir | MPSC & UPSC Guidance";
+const footerSize = 9;
+const footerWidth = font.widthOfTextAtSize(footer, footerSize);
+
+page.drawLine({
+  start: { x: 28, y: 30 },
+  end: { x: width - 28, y: 30 },
+  thickness: 0.6,
+  color: rgb(0.90, 0.62, 0.18)
+});
+
+page.drawText(footer, {
+  x: Math.max(28, (width - footerWidth) / 2),
+  y: 16,
+  size: footerSize,
+  font: boldFont,
+  color: rgb(0.10, 0.20, 0.35)
+});
+
+}
+
+const brandedBytes = await pdfDoc.save();
+
+const brandedFileName = file.name.replace(/.pdf$/i, "") + "-branded.pdf";
+
+return new File([brandedBytes], brandedFileName, {
+type: "application/pdf"
+});
+}
 const statusBox = document.getElementById("status");
 const uploadButton = document.getElementById("uploadButton");
 const materialsBox = document.getElementById("materials");
@@ -283,14 +343,18 @@ document.getElementById("uploadForm").addEventListener("submit", async event => 
       throw new Error("The PDF must be smaller than 50 MB.");
     }
 
-    // Upload original file. Branding will be applied in a later stage.
-    const path = `${currentUser.id}/${crypto.randomUUID()}.pdf`;
-    const { error: uploadError } = await supabase.storage
-      .from("study-materials")
-      .upload(path, file, {
-        contentType: "application/pdf",
-        upsert: false
-      });
+    showStatus("Adding watermark and footer to PDF...");
+
+const brandedFile = await addPdfBranding(file, branding);
+
+const path = "${currentUser.id}/${crypto.randomUUID()}.pdf";
+
+const { error: uploadError } = await supabase.storage
+.from("study-materials")
+.upload(path, brandedFile, {
+contentType: "application/pdf",
+upsert: false
+});
 
     if (uploadError) throw uploadError;
     uploadedPath = path;
